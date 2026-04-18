@@ -1,58 +1,59 @@
 #!/bin/bash
-#========================================================================================================================
-# https://github.com/ophub/amlogic-s9xxx-openwrt
-# Description: Automatically Build OpenWrt
-# Function: Diy script (After Update feeds, Modify the default IP, hostname, theme, add/remove software packages, etc.)
-# Source code repository: https://github.com/coolsnowwolf/lede / Branch: master
-#========================================================================================================================
-
-# ------------------------------- Main source started -------------------------------
 #
-# Set default IP address
-default_ip="192.168.1.1"
-ip_regex="^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$"
-# Modify default IP if an argument is provided and it matches the IP format
-[[ -n "${1}" && "${1}" != "${default_ip}" && "${1}" =~ ${ip_regex} ]] && {
-    echo "Modify default IP address to: ${1}"
-    sed -i "/lan) ipad=\${ipaddr:-/s/\${ipaddr:-\"[^\"]*\"}/\${ipaddr:-\"${1}\"}/" package/base-files/*/bin/config_generate
-}
-
-# Modify default theme（FROM uci-theme-bootstrap CHANGE TO luci-theme-material）
-# sed -i 's/luci-theme-bootstrap/luci-theme-material/g' ./feeds/luci/collections/luci/Makefile
-
-# Add autocore support for armsr-armv8
-sed -i 's/TARGET_rockchip/TARGET_rockchip\|\|TARGET_armsr/g' package/lean/autocore/Makefile
-
-# Set etc/openwrt_release
-sed -i "s|DISTRIB_REVISION='.*'|DISTRIB_REVISION='R$(date +%Y.%m.%d)'|g" package/lean/default-settings/files/zzz-default-settings
-echo "DISTRIB_SOURCEREPO='github.com/coolsnowwolf/lede'" >>package/base-files/files/etc/openwrt_release
-echo "DISTRIB_SOURCECODE='lede'" >>package/base-files/files/etc/openwrt_release
-echo "DISTRIB_SOURCEBRANCH='master'" >>package/base-files/files/etc/openwrt_release
-
-# Set ccache
-# Remove existing ccache settings
-sed -i '/CONFIG_DEVEL/d' .config
-sed -i '/CONFIG_CCACHE/d' .config
-# Apply new ccache configuration
-if [[ "${2}" == "true" ]]; then
-    echo "CONFIG_DEVEL=y" >>.config
-    echo "CONFIG_CCACHE=y" >>.config
-    echo 'CONFIG_CCACHE_DIR="$(TOPDIR)/.ccache"' >>.config
-else
-    echo '# CONFIG_DEVEL is not set' >>.config
-    echo "# CONFIG_CCACHE is not set" >>.config
-    echo 'CONFIG_CCACHE_DIR=""' >>.config
-fi
+# Copyright (c) 2019-2020 P3TERX <https://p3terx.com>
 #
-# ------------------------------- Main source ends -------------------------------
+# This is free software, licensed under the MIT License.
+# See /LICENSE for more information.
+#
+# https://github.com/P3TERX/Actions-OpenWrt
+# File name: diy-part2.sh
+# Description: OpenWrt DIY script part 2 (After Update feeds)
+#
 
-# ------------------------------- Other started -------------------------------
-#
-# Add luci-app-amlogic
-rm -rf package/luci-app-amlogic
-git clone https://github.com/ophub/luci-app-amlogic.git package/luci-app-amlogic
-#
-# Apply patch
-# git apply ../config/patches/{0001*,0002*}.patch --directory=feeds/luci
-#
-# ------------------------------- Other ends -------------------------------
+# ==========================================
+# 1. 基础系统设定 (主机名与密码)
+# ==========================================
+
+# 1.1 修改主机名为 Phicomm-N1
+sed -i 's/OpenWrt/Phicomm-N1/g' package/base-files/files/bin/config_generate
+
+# 1.2 修改默认登录密码为 'password'
+# 对应密文: $1$V4UetPzk$CYXluq4wUazHjmCDBCqXF.
+sed -i 's/root:::0:99999:7:::/root:$1$V4UetPzk$CYXluq4wUazHjmCDBCqXF.:0:0:99999:7:::/g' package/base-files/files/etc/shadow
+sed -i 's/root::0:0:99999:7:::/root:$1$V4UetPzk$CYXluq4wUazHjmCDBCqXF.:0:0:99999:7:::/g' package/base-files/files/etc/shadow
+
+# ==========================================
+# 2. 网络初始化设定 (针对旁路由模式)
+# ==========================================
+
+# 2.1 修改默认局域网 IP (N1的访问地址) 为 192.168.1.3
+sed -i 's/192.168.1.1/192.168.1.3/g' package/base-files/files/bin/config_generate
+
+# 2.2 强制设定 LAN 接口的默认网关指向主路由 192.168.1.1
+sed -i '/set network.$1.netmask='\''$netm'\''/a \t\t\t\tset network.$1.gateway='\''192.168.1.1'\''' package/base-files/files/bin/config_generate
+
+# 2.3 强制设定 LAN 接口的默认 DNS 指向主路由 192.168.1.1
+sed -i '/set network.$1.gateway='\''192.168.1.1'\''/a \t\t\t\tset network.$1.dns='\''192.168.1.1'\''' package/base-files/files/bin/config_generate
+
+# ==========================================
+# 3. IPv6 管理
+# ==========================================
+
+# 3.1 剔除 LAN 接口的 IPv6 地址分配权限 (防止冲突)
+sed -i '/set network.$1.ip6assign='\''60'\''/d' package/base-files/files/bin/config_generate
+
+# ==========================================
+# 4. 无线网络 (WiFi) 初始化设定
+# ==========================================
+
+# 4.1 默认开启 WiFi 功能
+sed -i 's/disabled=1/disabled=0/g' package/kernel/mac80211/files/lib/wifi/mac80211.sh
+
+# 4.2 设置 WiFi 名称 (SSID) 为 Phicomm-N1
+sed -i 's/ssid=OpenWrt/ssid=Phicomm-N1/g' package/kernel/mac80211/files/lib/wifi/mac80211.sh
+
+# 4.3 设置 WiFi 加密方式为 WPA2 (psk2)
+sed -i 's/encryption=none/encryption=psk2/g' package/kernel/mac80211/files/lib/wifi/mac80211.sh
+
+# 4.4 设置 WiFi 密码为 password
+sed -i '/set wireless.default_radio${devidx}.encryption=psk2/a \t\t\tset wireless.default_radio${devidx}.key='\''password'\''' package/kernel/mac80211/files/lib/wifi/mac80211.sh
