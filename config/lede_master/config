@@ -46,3 +46,6 @@ CONFIG_PACKAGE_libcap=y
 CONFIG_PACKAGE_libcap-bin=y
 CONFIG_PACKAGE_tar=y
 CONFIG_PACKAGE_unzip=y
+
+# 2. 强制扩充系统分区到 1GB（解决 Docker 和空间不足）
+CONFIG_TARGET_ROOTFS_PARTSIZE=1024
